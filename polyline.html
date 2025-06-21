@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Đường gấp khúc tương tác</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .controls { margin-bottom: 10px; text-align: center; }
+    .slider-label { margin-right: 10px; }
+    .svg-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100vw;
+    }
+    svg { 
+      background: #fafafa; 
+      border: 1px solid #ccc; 
+      width: 80vw; 
+      height: 80vh;
+      max-width: 1200px;
+      max-height: 900px;
+      display: block;
+    }
+    .axis { stroke: #888; stroke-width: 1; }
+    .polyline1 { stroke: #0074D9; stroke-width: 2; fill: none; }
+    .polyline2 { stroke: #FF4136; stroke-width: 2; fill: none; }
+    .polyline-sum { stroke: #2ECC40; stroke-width: 2; fill: none; stroke-dasharray: 5 5; }
+    .point { cursor: pointer; }
+    .point1 { fill: #0074D9; stroke: #001F3F; stroke-width: 2; }
+    .point2 { fill: #FF4136; stroke: #85144b; stroke-width: 2; }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <span class="slider-label">Số điểm gãy đường 1:</span>
+    <input type="range" id="slider1" min="0" max="8" value="2">
+    <span id="val1">2</span>
+    <span class="slider-label" style="margin-left:30px;">Số điểm gãy đường 2:</span>
+    <input type="range" id="slider2" min="0" max="8" value="2">
+    <span id="val2">2</span>
+  </div>
+  <div style="text-align:center; margin-bottom: 8px;">
+    <span style="color:#2ECC40; font-weight:bold;">xanh lá</span>
+    =
+    <span style="color:#FF4136; font-weight:bold;">đỏ</span>
+    +
+    <span style="color:#0074D9; font-weight:bold;">xanh dương</span>
+  </div>
+  <div style="text-align:center; margin-bottom: 16px; font-size: 18px; color: #8e44ad;">
+    <span style="font-weight:bold;">thử thách cho bạn:</span>
+    di chuyển các điểm để đường <span style="color:#2ECC40; font-weight:bold;">xanh lá</span> xấp xỉ tốt nhất đường cong màu tím
+  </div>
+  <div class="svg-container">
+    <svg id="canvas"></svg>
+  </div>
+  <script>
+    // Thay đổi width, height cho phù hợp với kích thước mới
+    const width = Math.floor(window.innerWidth * 0.8);
+    const height = Math.floor(window.innerHeight * 0.8);
+    const margin = 40;
+    const svg = document.getElementById('canvas');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+
+    const xMin = -5, xMax = 5; // trục X từ -5 đến 5
+    const yMin = -10, yMax = 25;  // trục Y từ -10 đến 10
+    let m = 2, n = 2; // số điểm gãy mặc định
+    let dragging = null;
+
+    // Chuyển đổi giữa giá trị thực và pixel
+    function xToValue(x) {
+      return xMin + (x - margin) / (width - 2 * margin) * (xMax - xMin);
+    }
+    function yToValue(y) {
+      return yMin + (height - margin - y) / (height - 2 * margin) * (yMax - yMin);
+    }
+    function valueToX(val) {
+      return margin + (val - xMin) * (width - 2 * margin) / (xMax - xMin);
+    }
+    function valueToY(val) {
+      return height - margin - (val - yMin) * (height - 2 * margin) / (yMax - yMin);
+    }
+
+    // Khởi tạo các điểm gãy
+    function initPoints(numBreaks, offsetY) {
+      // numBreaks: số điểm gãy (không tính 2 biên)
+      let count = numBreaks + 2;
+      let pts = [];
+      for (let i = 0; i < count; ++i) {
+        let xVal = xMin + i * (xMax - xMin) / (count - 1);
+        pts.push([
+          valueToX(xVal),
+          offsetY + Math.random() * 40 - 20
+        ]);
+      }
+      return pts;
+    }
+
+    let points1 = initPoints(m, height / 3);
+    let points2 = initPoints(n, 2 * height / 3);
+
+    // Nội suy tuyến tính giá trị y tại x bất kỳ trên polyline
+    function interpolateY(points, x) {
+      // Nếu x nằm ngoài đoạn, lấy y ở đầu/cuối
+      if (x <= xToValue(points[0][0])) return yToValue(points[0][1]);
+      if (x >= xToValue(points[points.length-1][0])) return yToValue(points[points.length-1][1]);
+      // Tìm đoạn chứa x
+      for (let i = 0; i < points.length - 1; ++i) {
+        let x1 = xToValue(points[i][0]);
+        let x2 = xToValue(points[i+1][0]);
+        if (x1 <= x && x <= x2) {
+          let y1 = yToValue(points[i][1]);
+          let y2 = yToValue(points[i+1][1]);
+          let t = (x - x1) / (x2 - x1);
+          return y1 * (1 - t) + y2 * t;
+        }
+      }
+      return 0;
+    }
+
+    function sumPoints(p1, p2) {
+      // Lấy tất cả các x của cả hai đường, loại trùng, sắp xếp tăng dần
+      let xs = [
+        ...p1.map(pt => xToValue(pt[0])),
+        ...p2.map(pt => xToValue(pt[0]))
+      ];
+      xs = Array.from(new Set(xs)).sort((a, b) => a - b);
+
+      let res = [];
+      for (let x of xs) {
+        let y1 = interpolateY(p1, x);
+        let y2 = interpolateY(p2, x);
+        res.push([
+          valueToX(x),
+          valueToY(y1 + y2)
+        ]);
+      }
+      return res;
+    }
+
+    function draw() {
+      svg.innerHTML = '';
+
+      // Vẽ grid
+      let gridStepX = 1;
+      let gridStepY = 1;
+      for (let xVal = xMin; xVal <= xMax; xVal += gridStepX) {
+        let x = valueToX(xVal);
+        svg.insertAdjacentHTML('beforeend',
+          `<line x1="${x}" y1="${margin}" x2="${x}" y2="${height-margin}" stroke="#eee" stroke-width="1"/>`
+        );
+      }
+      for (let yVal = yMin; yVal <= yMax; yVal += gridStepY) {
+        let y = valueToY(yVal);
+        svg.insertAdjacentHTML('beforeend',
+          `<line x1="${margin}" y1="${y}" x2="${width-margin}" y2="${y}" stroke="#eee" stroke-width="1"/>`
+        );
+      }
+
+      // Thêm mốc giá trị trục X
+      for (let xVal = xMin; xVal <= xMax; xVal += gridStepX) {
+        let x = valueToX(xVal);
+        svg.insertAdjacentHTML('beforeend',
+          `<text x="${x}" y="${height - margin + 18}" font-size="12" text-anchor="middle" fill="#888">${xVal}</text>`
+        );
+      }
+      // Thêm mốc giá trị trục Y
+      for (let yVal = yMin; yVal <= yMax; yVal += gridStepY) {
+        let y = valueToY(yVal);
+        svg.insertAdjacentHTML('beforeend',
+          `<text x="${margin - 10}" y="${y + 4}" font-size="12" text-anchor="end" fill="#888">${yVal}</text>`
+        );
+      }
+
+      // Vẽ hệ trục
+      let axisX = `<line class="axis" x1="${margin}" y1="${height-margin}" x2="${width-margin}" y2="${height-margin}"/>`;
+      let axisY = `<line class="axis" x1="${margin}" y1="${margin}" x2="${margin}" y2="${height-margin}"/>`;
+      svg.insertAdjacentHTML('beforeend', axisX + axisY);
+
+      // Vẽ đường gấp khúc 1
+      let poly1 = points1.map(p => p.join(',')).join(' ');
+      svg.insertAdjacentHTML('beforeend', `<polyline class="polyline1" points="${poly1}"/>`);
+      // Vẽ điểm gãy 1
+      points1.forEach((p, i) => {
+        svg.insertAdjacentHTML('beforeend',
+          `<circle class="point point1" data-type="1" data-idx="${i}" cx="${p[0]}" cy="${p[1]}" r="8"/>`
+        );
+      });
+
+      // Vẽ đường gấp khúc 2
+      let poly2 = points2.map(p => p.join(',')).join(' ');
+      svg.insertAdjacentHTML('beforeend', `<polyline class="polyline2" points="${poly2}"/>`);
+      // Vẽ điểm gãy 2
+      points2.forEach((p, i) => {
+        svg.insertAdjacentHTML('beforeend',
+          `<circle class="point point2" data-type="2" data-idx="${i}" cx="${p[0]}" cy="${p[1]}" r="8"/>`
+        );
+      });
+
+      // Vẽ đường tổng
+      let sum = sumPoints(points1, points2);
+      let polysum = sum.map(p => p.join(',')).join(' ');
+      svg.insertAdjacentHTML('beforeend', `<polyline class="polyline-sum" points="${polysum}"/>`);
+
+      // Vẽ đường cong y = x^2 từ x = -5 đến x = 5
+      let curvePoints = [];
+      for (let x = -5; x <= 5; x += 0.05) {
+        let y = x * x;
+        // Nếu y vượt quá trục tung thì bỏ qua
+        if (y < yMin || y > yMax) continue;
+        curvePoints.push([valueToX(x), valueToY(y)]);
+      }
+      let curveStr = curvePoints.map(p => p.join(',')).join(' ');
+      svg.insertAdjacentHTML('beforeend', `<polyline points="${curveStr}" stroke="#8e44ad" stroke-width="2" fill="none"/>`);
+
+      // Tính MSE giữa đường xanh lá và đường cong tím y = x^2
+      let mse = 0;
+      let n = sum.length;
+      for (let i = 0; i < n; ++i) {
+        let x = xToValue(sum[i][0]);
+        let y_sum = yToValue(sum[i][1]);
+        let y_curve = x * x;
+        mse += Math.pow(y_sum - y_curve, 2);
+      }
+      mse = mse / n;
+
+      // Hiển thị MSE ở góc dưới bên phải của hình
+      let mseText = `MSE (xanh lá & tím): ${mse.toFixed(4)}`;
+      // Xóa text cũ nếu có
+      let oldMse = svg.querySelector('#mse-label');
+      if (oldMse) oldMse.remove();
+      svg.insertAdjacentHTML(
+        'beforeend',
+        `<text id="mse-label" x="${width - margin - 10}" y="${height - margin - 10}" 
+          font-size="18" text-anchor="end" fill="#e67e22" font-weight="bold">${mseText}</text>`
+      );
+    }
+
+    // Xử lý kéo điểm
+    svg.addEventListener('mousedown', function(e) {
+      if (e.target.classList.contains('point')) {
+        dragging = {
+          type: e.target.getAttribute('data-type'),
+          idx: parseInt(e.target.getAttribute('data-idx'))
+        };
+      }
+    });
+    svg.addEventListener('mousemove', function(e) {
+      if (dragging) {
+        let pt = svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        let svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+        let x = Math.max(margin, Math.min(width - margin, svgP.x));
+        let y = Math.max(margin, Math.min(height - margin, svgP.y));
+        if (dragging.type === '1') {
+          points1[dragging.idx] = [x, y];
+        } else {
+          points2[dragging.idx] = [x, y];
+        }
+        draw();
+      }
+    });
+    window.addEventListener('mouseup', function() { dragging = null; });
+
+    // Xử lý slider
+    document.getElementById('slider1').addEventListener('input', function(e) {
+      m = parseInt(e.target.value);
+      document.getElementById('val1').textContent = m;
+      points1 = initPoints(m, height / 3);
+      draw();
+    });
+    document.getElementById('slider2').addEventListener('input', function(e) {
+      n = parseInt(e.target.value);
+      document.getElementById('val2').textContent = n;
+      points2 = initPoints(n, 2 * height / 3);
+      draw();
+    });
+
+    draw();
+  </script>
+</body>
+</html>
