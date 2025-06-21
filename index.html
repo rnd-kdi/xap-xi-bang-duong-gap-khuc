@@ -226,7 +226,7 @@
       mse = mse / n;
 
       // Hiển thị MSE ở góc dưới bên phải của hình
-      let mseText = `MSE (xanh lá & tím): ${mse.toFixed(4)}`;
+      let mseText = `Sai số (mse): ${mse.toFixed(4)}`;
       // Xóa text cũ nếu có
       let oldMse = svg.querySelector('#mse-label');
       if (oldMse) oldMse.remove();
